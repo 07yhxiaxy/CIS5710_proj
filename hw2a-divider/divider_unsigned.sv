@@ -73,13 +73,14 @@ module divu_1iter (
     }
     */
 
-    // TODO: your code here
-logic [31:0] dividend_shift, remainder_shift, quotient;
+// TODO: your code here
+// Intermediary variables to store shifted values
+logic [31:0] dividend_shift, remainder_shift;
+// Calculate this iteration of shift
 assign remainder_shift = {i_remainder[30:0],1'b0} | {{31{1'b0}},{(i_dividend[31] & 1'b1)}};
-
+// Assign output values based on the algorithm
 assign o_remainder = (remainder_shift < i_divisor) ? remainder_shift : remainder_shift - i_divisor;
-assign o_quotient = (remainder_shift < i_divisor) ? {i_quotient[30:0],1'b0} : ({i_quotient[30:0],1'b0} | 32'h00000001);
-        
+assign o_quotient = (remainder_shift < i_divisor) ? {i_quotient[30:0],1'b0} : ({i_quotient[30:0],1'b0} | 32'h00000001);  
 assign o_dividend = {i_dividend[30:0], 1'b0};
 
 
