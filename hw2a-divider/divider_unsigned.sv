@@ -25,6 +25,7 @@ module divu_1iter (
     output wire [31:0] o_remainder,
     output wire [31:0] o_quotient
 );
+
   /*
     for (int i = 0; i < 32; i++) {
         remainder = (remainder << 1) | ((dividend >> 31) & 0x1);
@@ -39,5 +40,8 @@ module divu_1iter (
     */
 
     // TODO: your code here
+logic [31:0] dividend_shift, remainder_shift, quotient;
+assign remainder_shift = {i_remainder[30:0],1'b0} | (i_dividend[31] & 1'b1);
+
 
 endmodule
