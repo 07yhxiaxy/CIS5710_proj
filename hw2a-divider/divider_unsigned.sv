@@ -12,25 +12,30 @@ module divider_unsigned (
 );
 
 // TODO: your code here
+// Set the SIZE to be 32 bits so that we process 32 bits data
 parameter SIZE = 32;
 
+// Intermediary value in shape 33 * 32 bits to store values for every single 1iter inputs
 logic [31:0] dividend [0:32];
 logic [31:0] remainder [0:32];
 logic [31:0] quotient [0:32];
 
+// First 1iter dividend input is wrapper input
 assign dividend[0] = i_dividend;
+// The final result is stored in the last remainder element
 assign o_remainder = remainder[32];
+// Same goes for quotient
 assign o_quotient = quotient[32];
 
 // Initialize (zero) the remainder and quotient for the first 1iter module
 assign remainder[0] = 0;
 assign quotient[0] = 0;
 
+// Generate variables for the for loop
 genvar i;
-
 generate
     for(i=0; i<SIZE; i++) begin: iter
-        divu_1iter divu_inst[31:0](
+        divu_1iter divu_inst(
             .i_dividend(dividend[i]),
             .i_divisor(i_divisor),
             .i_remainder(remainder[i]),
