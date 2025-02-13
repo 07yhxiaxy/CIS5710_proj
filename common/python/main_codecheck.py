@@ -17,8 +17,16 @@ def traverseSyntaxTree(filename, obj, newlineIndices, objectIsLegal, parent_key=
         tag = obj.get('tag', None)
         text = obj.get('text', None)        
         # don't explore these constructs
-        if tag in ["kDataType","kForCondition","kLoopHeader","kDimensionRange","kDimensionScalar","kTimescaleDirective"]:
-            return            
+        if tag in ["kDataType",
+                   "kForCondition",
+                   "kGenerateIfHeader",
+                   "kLoopHeader",
+                   "kParamDeclaration",
+                   "kDimensionRange",
+                   "kDimensionScalar",
+                   "kDimensionSlice",
+                   "kTimescaleDirective"]:
+            return
         
         legalConstruct,descendInto = objectIsLegal(filename, obj)
 

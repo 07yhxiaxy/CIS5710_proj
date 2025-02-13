@@ -12,11 +12,8 @@ __check_defined = \
     $(if $(value $1),, \
       $(error Undefined $1$(if $2, ($2))))
 
-# variables that should be defined for all homeworks
-#$(call check_defined, SV_SYNTH_SOURCES VERILOG_SYNTH_SOURCE, Each homework Makefile should define this)
-
 ifdef SV_SYNTH_SOURCES
-$(call check_defined, SV_SYNTH_SOURCES VERILOG_SYNTH_SOURCE TOP_MODULE_DEMO TOP_MODULE_RESOURCE_CHECK CONSTRAINTS, Each homework with a demo should define this in Makefile)
+$(call check_defined, SV_SYNTH_SOURCES VERILOG_SYNTH_SOURCE TOP_MODULE_RESOURCE_CHECK CONSTRAINTS, Each homework with a demo should define this in Makefile)
 endif
 
 ifdef ZIP_SOURCES
@@ -41,7 +38,7 @@ codecheck:
 
 test:
 	@echo You can run just specific tests via:
-	@echo "     MAKEFLAGS=-j4 pytest --exitfirst --capture=no testbench.py --tests TEST1,TEST2,..."
+	@echo "     MAKEFLAGS=-j4 pytest --exitfirst --capture=no -k runCocotbTests_ADD_TEST_COLLECTION_HERE testbench.py --tests TEST1,TEST2,..."
 	MAKEFLAGS=-j4 pytest --capture=no --exitfirst testbench.py
 
 demo:
