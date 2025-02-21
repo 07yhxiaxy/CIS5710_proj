@@ -2,6 +2,27 @@
 
 `timescale 1ns / 1ns
 
+// Handles both signed and unsigned division
+module divider(
+    input  wire [31:0] i_dividend,
+    input  wire [31:0] i_divisor,
+    input  wire sign,  // custom signal - 0 means unsigned, 1 means signed;
+    output wire [31:0] o_remainder,
+    output wire [31:0] o_quotient
+);
+    // Intermediary storage
+    logic [31:0] abs_dividend, abs_divisor, o_quotient_u, o_remainder_u;
+    // logic [31:0] unsigned_remainder, unsigned_quotient;
+    // logic sign_dividend, sign_divisor, sign_quotient, sign_remainder;
+    // Assign values
+    assign abs_dividend = sign ? (i_dividend[31] ? (~i_dividend + 1) : i_dividend) : i_dividend;
+    assign abs_divisor = sign ? (i_divisor[31] ? (~i_divisor + 1) : i_divisor) : i_divisor;
+    divider_unsigned div_u(.i_dividend(abs_dividend), .i_divisor(abs_divisor), .o_remainder(o_remainder_u), .o_quotient(o_quotient_u));
+    assign o_quotient = ~(|i_divisor) ? 32'hffffffff : sign ? ((i_dividend[31] ^ i_divisor[31]) ? (~o_quotient_u + 1) : o_quotient_u) : o_quotient_u;
+    assign o_remainder = sign ? ((i_dividend[31]) ? (~o_remainder_u + 1) : o_remainder_u) : o_remainder_u;
+
+endmodule
+
 // quotient = dividend / divisor
 
 module divider_unsigned (

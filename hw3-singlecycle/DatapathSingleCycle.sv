@@ -25,6 +25,23 @@ module RegFile (
   logic [`REG_SIZE] regs[NumRegs];
 
   // TODO: your code here
+  always @(posedge clk) begin
+    if (rst) begin
+      for (int i = 0; i < NumRegs; i++) begin
+        regs[i] <= '0;
+      end
+    end else if (we && rd != 0) begin
+      regs[rd] <= rd_data;
+    end
+  end
+
+  // always_ff @(posedge clk) begin
+  //   rs1_data <= regs[rs1];
+  //   rs2_data <= regs[rs2];
+  // end
+
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
 
 endmodule
 
@@ -190,28 +207,320 @@ module DatapathSingleCycle (
   // TODO: you will need to edit the port connections, however.
   wire [`REG_SIZE] rs1_data;
   wire [`REG_SIZE] rs2_data;
+  logic [`REG_SIZE] rd_data;
+
+  logic we;
+
   RegFile rf (
     .clk(clk),
     .rst(rst),
-    .we(1'b0),
-    .rd(0),
-    .rd_data(0),
-    .rs1(0),
-    .rs2(0),
+    .we(we),
+    .rd(insn_rd),
+    .rd_data(rd_data),
+    .rs1(insn_rs1),
+    .rs2(insn_rs2),
     .rs1_data(rs1_data),
     .rs2_data(rs2_data));
 
   logic illegal_insn;
 
-  always_comb begin
-    illegal_insn = 1'b0;
+  // Declare CLA and Divider:
+  // CLA
+  logic [31:0] a, b, sum, a1, b1, sum1, addr_to_dmem_tmp;
+  logic cin, cin1;
+  cla cla1(.a(a), .b(b), .cin(cin), .sum(sum));
+  cla cla2(.a(a1), .b(b1), .cin(cin1), .sum(sum1));
+  logic carry, carry1;
+  // Multiplier signal
+  logic [63:0] mul_tmp;
+  // Divider
+  logic [31:0] i_dividend, i_divisor, o_remainder, o_quotient;
+  logic sign;
+  divider div1(.i_dividend(i_dividend), .i_divisor(i_divisor), .o_remainder(o_remainder), .o_quotient(o_quotient), .sign(sign));
 
+  always_comb begin
+    // Default assignment to avoid latches
+    illegal_insn = 1'b0;
+    pcNext = pcCurrent + 32'd4;
+    rd_data = 32'b0;
+    we = 0;
+    halt = 0;
+    a = 0;
+    b = 0;
+    cin = 0;
+    a1 = 0;
+    b1 = 0;
+    cin1 = 0;
+    carry = 0;
+    sign = 0;
+    mul_tmp = 0;
+    i_dividend = 0;
+    i_divisor = 32'd1;
+    addr_to_dmem_tmp = 0;
     case (insn_opcode)
+    
       OpLui: begin
         // TODO: start here by implementing lui
+        rd_data = {insn_from_imem[31:12], 12'd0};
+        we = 1'b1;
       end
+      OpAuipc: begin
+        we = 1'b1;
+        rd_data = pcCurrent + {insn_from_imem[31:12], 12'd0};
+      end
+      OpRegImm: begin
+        we = 1'b1;
+        if (insn_addi) begin
+          a = rs1_data;
+          b = {{20{imm_i[11]}}, imm_i[11:0]};
+          cin = 1'b0;
+          rd_data = sum;
+          // rd_data = a + b;
+        end else if (insn_slti) begin
+          rd_data = ($signed(rs1_data) < $signed({{20{imm_i[11]}}, imm_i})) ? 1 : 0;
+        end else if (insn_sltiu) begin
+          rd_data = rs1_data < {{20{imm_i[11]}}, imm_i} ? 1 : 0;
+        end else if (insn_xori) begin
+          rd_data = rs1_data ^ {{20{imm_i[11]}}, imm_i};
+        end else if (insn_ori) begin
+          rd_data = rs1_data | {{20{imm_i[11]}}, imm_i};
+        end else if (insn_andi) begin
+          rd_data = rs1_data & {{20{imm_i[11]}}, imm_i};
+        end else if (insn_slli) begin
+          rd_data = rs1_data << imm_shamt;
+        end else if (insn_srli) begin
+          rd_data = rs1_data >> imm_shamt;
+        end else if (insn_srai) begin
+          rd_data = $signed(rs1_data) >>> imm_shamt;
+        end
+      end
+      OpRegReg: begin
+        we = 1'b1;
+        // Add and Substraction
+        if (insn_add) begin
+          a = rs1_data;
+          b = rs2_data;
+          cin = 1'b0;
+          rd_data = sum;
+        end
+        else if (insn_sub) begin
+          a = rs1_data;
+          b = ~rs2_data;
+          cin = 1'b1;
+          rd_data = sum;
+        end
+        // Shifts
+        else if (insn_sll) begin
+          rd_data = rs1_data << rs2_data[4:0];
+        end
+        else if (insn_slt) begin
+          rd_data = ($signed(rs1_data) < $signed(rs2_data)) ? 1 : 0;
+        end
+        else if (insn_sltu) begin
+          rd_data = (rs1_data < rs2_data) ? 1 : 0;
+        end
+        else if (insn_srl) begin
+          rd_data = rs1_data >> rs2_data[4:0];
+        end
+        else if (insn_sra) begin
+          rd_data = $signed(rs1_data) >>> rs2_data[4:0];
+        end
+        // Logical Operations
+        else if (insn_xor) begin
+          rd_data = rs1_data ^ rs2_data;
+        end
+        else if (insn_or) begin
+          rd_data = rs1_data | rs2_data;
+        end
+        else if (insn_and) begin
+          rd_data = rs1_data & rs2_data;
+        end
+        // Multiplication
+        else if (insn_mul) begin
+          mul_tmp = rs1_data * rs2_data;
+          rd_data = mul_tmp[31:0];
+        end
+        else if (insn_mulh) begin
+          mul_tmp = $signed(rs1_data) * $signed(rs2_data);
+          rd_data = mul_tmp[63:32];
+        end
+        else if (insn_mulhsu) begin
+          mul_tmp = $signed({{32{rs1_data[31]}}, rs1_data}) * $unsigned(rs2_data);
+          rd_data = mul_tmp[63:32];
+        end
+        else if (insn_mulhu) begin
+          mul_tmp = rs1_data * rs2_data;
+          rd_data = mul_tmp[63:32];
+        end
+        // Division
+        else if (insn_div) begin
+          sign = 1;
+          i_dividend = rs1_data;
+          i_divisor = rs2_data;
+          rd_data = o_quotient;
+        end
+        else if (insn_divu) begin
+          sign = 0;
+          i_dividend = rs1_data;
+          i_divisor = rs2_data;
+          rd_data = o_quotient;
+        end
+        else if (insn_rem) begin
+          sign = 1;
+          i_dividend = rs1_data;
+          i_divisor = rs2_data;
+          rd_data = o_remainder;
+        end
+        else if (insn_remu) begin
+          sign = 0;
+          i_dividend = rs1_data;
+          i_divisor = rs2_data;
+          rd_data = o_remainder;
+        end
+      end
+      OpBranch: begin
+        if (insn_beq) begin
+          if (rs1_data == rs2_data)
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+        else if (insn_bne) begin
+          if (rs1_data != rs2_data)
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+        else if (insn_blt) begin
+          if ($signed(rs1_data) < $signed(rs2_data))
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+        else if (insn_bge) begin
+          if ($signed(rs1_data) >= $signed(rs2_data))
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+        else if (insn_bltu) begin
+          if (rs1_data < rs2_data)
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+        else if (insn_bgeu) begin
+          if (rs1_data >= rs2_data)
+            {carry, pcNext} = pcCurrent + imm_b_sext;
+        end
+      end
+      OpEnviron:
+        if (insn_ecall) halt = 1;
+      OpMiscMem:
+        pcNext = pcCurrent + 32'd4;
+      OpJal: begin
+        we = 1;
+        rd_data = pcCurrent + 32'd4;
+        pcNext = pcCurrent + imm_j_sext;
+      end
+      OpJalr: begin
+        we = 1;
+        rd_data = pcCurrent + 32'd4;
+        pcNext = (rs1_data + imm_i_sext) & ~32'd1;
+      end
+      OpLoad: begin
+        we = 1'b1;
+        addr_to_dmem_tmp = rs1_data + imm_i_sext;
+        addr_to_dmem = {addr_to_dmem_tmp[31:2], 2'd0};
+        if (insn_lb) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: rd_data = {{24{load_data_from_dmem[7]}}, load_data_from_dmem[7:0]};
+            2'b01: rd_data = {{24{load_data_from_dmem[15]}}, load_data_from_dmem[15:8]};
+            2'b10: rd_data = {{24{load_data_from_dmem[23]}}, load_data_from_dmem[23:16]};
+            2'b11: rd_data = {{24{load_data_from_dmem[31]}}, load_data_from_dmem[31:24]};
+          endcase
+        end
+        else if (insn_lh) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: rd_data = {{16{load_data_from_dmem[15]}}, load_data_from_dmem[15:0]};
+            2'b10: rd_data = {{16{load_data_from_dmem[31]}}, load_data_from_dmem[31:16]};
+            default: rd_data = 0;
+          endcase
+        end
+        else if (insn_lw) begin
+          rd_data = load_data_from_dmem[31:0];
+        end
+        else if (insn_lbu) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: rd_data = {24'd0, load_data_from_dmem[7:0]};
+            2'b01: rd_data = {24'd0, load_data_from_dmem[15:8]};
+            2'b10: rd_data = {24'd0, load_data_from_dmem[23:16]};
+            2'b11: rd_data = {24'd0, load_data_from_dmem[31:24]};
+          endcase
+        end
+        else if (insn_lhu) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: rd_data = {16'd0, load_data_from_dmem[15:0]};
+            2'b10: rd_data = {16'd0, load_data_from_dmem[31:16]};
+            default: rd_data = 0;
+          endcase
+        end
+        else
+          we = 0;
+      end
+      OpStore: begin
+        addr_to_dmem_tmp = rs1_data + imm_s_sext;
+        addr_to_dmem = {addr_to_dmem_tmp[31:2], 2'd0};
+        if (insn_sb) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: begin
+              store_data_to_dmem = {24'd0, rs2_data[7:0]};
+              store_we_to_dmem = 4'd1;
+            end
+            2'b01: begin
+              store_data_to_dmem = {16'd0, rs2_data[7:0], 8'd0};
+              // store_data_to_dmem = {16'd0, rs2_data[15:8], 8'd0};
+              store_we_to_dmem = 4'd2;
+            end
+            2'b10: begin
+              store_data_to_dmem = {8'd0, rs2_data[7:0], 16'd0};
+              // store_data_to_dmem = {8'd0, rs2_data[23:16], 16'd0};
+              store_we_to_dmem = 4'd4;
+            end
+            2'b11: begin
+              store_data_to_dmem = {rs2_data[7:0], 24'd0};
+              // store_data_to_dmem = {rs2_data[31:24], 24'd0};
+              store_we_to_dmem = 4'd8;
+            end
+          endcase
+        end
+        else if (insn_sh) begin
+          case (addr_to_dmem_tmp[1:0])
+            2'b00: begin
+              store_data_to_dmem = {16'd0, rs2_data[15:0]};
+              store_we_to_dmem = 4'd3;
+            end
+            2'b10: begin
+              store_data_to_dmem = {rs2_data[15:0], 16'd0};
+              store_we_to_dmem = 4'd12;
+            end
+            default: begin
+              store_we_to_dmem = 0;
+              store_data_to_dmem = 0;
+            end
+          endcase
+        end
+        else if (insn_sw) begin
+          store_data_to_dmem = rs2_data;
+          store_we_to_dmem = 4'b1111;
+        end
+      end
+
       default: begin
-        illegal_insn = 1'b1;
+        // Default assignment that catches states not designed
+        illegal_insn = 1'b0;
+        pcNext = pcCurrent + 32'd4;
+        rd_data = 32'b0;
+        we = 0;
+        halt = 0;
+        a = 0;
+        b = 0;
+        cin = 0;
+        a1 = 0;
+        b1 = 0;
+        cin1 = 0;
+        carry = 0;
+        sign = 0;
       end
     endcase
   end

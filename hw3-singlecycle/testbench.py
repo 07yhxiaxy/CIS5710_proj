@@ -244,7 +244,7 @@ async def testEcall(dut):
 @cocotb.test()  
 async def testOneRiscvTest(dut):
     "Use this to run one particular riscv test"
-    await riscvTest(dut, cu.RISCV_TESTS_PATH / 'rv32ui-p-simple')
+    await riscvTest(dut, cu.RISCV_TESTS_PATH / 'rv32ui-p-slt')
 
 async def riscvTest(dut, binaryPath=None):
     "Run the official RISC-V test whose binary lives at `binaryPath`"
