@@ -63,22 +63,16 @@ module divider (
 	wire [31:0] abs_divisor;
 	wire [31:0] o_quotient_u;
 	wire [31:0] o_remainder_u;
-	wire [31:0] unsigned_remainder;
-	wire [31:0] unsigned_quotient;
-	wire sign_dividend;
-	wire sign_divisor;
-	wire sign_quotient;
-	wire sign_remainder;
-	assign abs_dividend = (i_dividend[31] ? ~i_dividend + 1 : i_dividend);
-	assign abs_divisor = (i_divisor[31] ? ~i_divisor + 1 : i_divisor);
+	assign abs_dividend = (sign ? (i_dividend[31] ? ~i_dividend + 1 : i_dividend) : i_dividend);
+	assign abs_divisor = (sign ? (i_divisor[31] ? ~i_divisor + 1 : i_divisor) : i_divisor);
 	divider_unsigned div_u(
 		.i_dividend(abs_dividend),
 		.i_divisor(abs_divisor),
 		.o_remainder(o_remainder_u),
 		.o_quotient(o_quotient_u)
 	);
-	assign o_quotient = (i_dividend[31] ^ i_divisor[31] ? ~o_quotient_u + 1 : o_quotient_u);
-	assign o_remainder = (i_dividend[31] ? ~o_remainder_u + 1 : o_remainder_u);
+	assign o_quotient = (~(|i_divisor) ? 32'hffffffff : (sign ? (i_dividend[31] ^ i_divisor[31] ? ~o_quotient_u + 1 : o_quotient_u) : o_quotient_u));
+	assign o_remainder = (sign ? (i_dividend[31] ? ~o_remainder_u + 1 : o_remainder_u) : o_remainder_u);
 endmodule
 module divider_unsigned (
 	i_dividend,
@@ -487,6 +481,7 @@ module DatapathSingleCycle (
 	reg [31:0] a1;
 	reg [31:0] b1;
 	wire [31:0] sum1;
+	reg [31:0] addr_to_dmem_tmp;
 	reg cin;
 	reg cin1;
 	cla cla1(
@@ -534,11 +529,19 @@ module DatapathSingleCycle (
 		sign = 0;
 		mul_tmp = 0;
 		i_dividend = 0;
-		i_divisor = 32'd1;
+		i_divisor = 32'd0;
+		addr_to_dmem_tmp = 0;
+		addr_to_dmem = 0;
+		store_we_to_dmem = 0;
+		store_data_to_dmem = 0;
 		case (insn_opcode)
 			OpLui: begin
-				rd_data = {insn_from_imem[31:12], 12'h000};
+				rd_data = {insn_from_imem[31:12], 12'd0};
 				we = 1'b1;
+			end
+			OpAuipc: begin
+				we = 1'b1;
+				rd_data = pcCurrent + {insn_from_imem[31:12], 12'd0};
 			end
 			OpRegImm: begin
 				we = 1'b1;
@@ -604,7 +607,7 @@ module DatapathSingleCycle (
 					rd_data = mul_tmp[63:32];
 				end
 				else if (insn_mulhsu) begin
-					mul_tmp = $signed(rs1_data) * rs2_data;
+					mul_tmp = $signed({{32 {rs1_data[31]}}, rs1_data}) * $unsigned(rs2_data);
 					rd_data = mul_tmp[63:32];
 				end
 				else if (insn_mulhu) begin
@@ -666,83 +669,80 @@ module DatapathSingleCycle (
 					halt = 1;
 			OpMiscMem: pcNext = pcCurrent + 32'd4;
 			OpJal: begin
+				we = 1;
 				rd_data = pcCurrent + 32'd4;
 				pcNext = pcCurrent + imm_j_sext;
 			end
 			OpJalr: begin
+				we = 1;
 				rd_data = pcCurrent + 32'd4;
 				pcNext = (rs1_data + imm_i_sext) & ~32'd1;
 			end
-			OpLoad:
-				if (insn_lb) begin
-					addr_to_dmem = rs1_data + imm_i_sext;
-					case (addr_to_dmem[1:0])
+			OpLoad: begin
+				we = 1'b1;
+				addr_to_dmem_tmp = rs1_data + imm_i_sext;
+				addr_to_dmem = {addr_to_dmem_tmp[31:2], 2'd0};
+				if (insn_lb)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: rd_data = {{24 {load_data_from_dmem[7]}}, load_data_from_dmem[7:0]};
 						2'b01: rd_data = {{24 {load_data_from_dmem[15]}}, load_data_from_dmem[15:8]};
 						2'b10: rd_data = {{24 {load_data_from_dmem[23]}}, load_data_from_dmem[23:16]};
 						2'b11: rd_data = {{24 {load_data_from_dmem[31]}}, load_data_from_dmem[31:24]};
 					endcase
-				end
-				else if (insn_lh) begin
-					addr_to_dmem = rs1_data + imm_i_sext;
-					case (addr_to_dmem[1:0])
+				else if (insn_lh)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: rd_data = {{16 {load_data_from_dmem[15]}}, load_data_from_dmem[15:0]};
 						2'b10: rd_data = {{16 {load_data_from_dmem[31]}}, load_data_from_dmem[31:16]};
 						default: rd_data = 0;
 					endcase
-				end
-				else if (insn_lw) begin
-					addr_to_dmem = rs1_data + imm_i_sext;
+				else if (insn_lw)
 					rd_data = load_data_from_dmem[31:0];
-				end
-				else if (insn_lbu) begin
-					addr_to_dmem = rs1_data + imm_i_sext;
-					case (addr_to_dmem[1:0])
+				else if (insn_lbu)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: rd_data = {24'd0, load_data_from_dmem[7:0]};
 						2'b01: rd_data = {24'd0, load_data_from_dmem[15:8]};
 						2'b10: rd_data = {24'd0, load_data_from_dmem[23:16]};
 						2'b11: rd_data = {24'd0, load_data_from_dmem[31:24]};
 					endcase
-				end
-				else if (insn_lhu) begin
-					addr_to_dmem = rs1_data + imm_i_sext;
-					case (addr_to_dmem[1:0])
+				else if (insn_lhu)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: rd_data = {16'd0, load_data_from_dmem[15:0]};
 						2'b10: rd_data = {16'd0, load_data_from_dmem[31:16]};
 						default: rd_data = 0;
 					endcase
-				end
-			OpStore:
-				if (insn_sb) begin
-					addr_to_dmem = rs1_data + imm_s_sext;
-					case (addr_to_dmem[1:0])
+				else
+					we = 0;
+			end
+			OpStore: begin
+				addr_to_dmem_tmp = rs1_data + imm_s_sext;
+				addr_to_dmem = {addr_to_dmem_tmp[31:2], 2'd0};
+				if (insn_sb)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: begin
 							store_data_to_dmem = {24'd0, rs2_data[7:0]};
-							store_we_to_dmem = 4'd0;
+							store_we_to_dmem = 4'd1;
 						end
 						2'b01: begin
-							store_data_to_dmem = {16'd0, rs2_data[15:8], 8'd0};
+							store_data_to_dmem = {16'd0, rs2_data[7:0], 8'd0};
 							store_we_to_dmem = 4'd2;
 						end
 						2'b10: begin
-							store_data_to_dmem = {8'd0, rs2_data[23:16], 16'd0};
+							store_data_to_dmem = {8'd0, rs2_data[7:0], 16'd0};
 							store_we_to_dmem = 4'd4;
 						end
 						2'b11: begin
-							store_data_to_dmem = {rs2_data[31:24], 24'd0};
+							store_data_to_dmem = {rs2_data[7:0], 24'd0};
 							store_we_to_dmem = 4'd8;
 						end
 					endcase
-				end
-				else if (insn_sh) begin
-					addr_to_dmem = rs1_data + imm_s_sext;
-					case (addr_to_dmem[1:0])
+				else if (insn_sh)
+					case (addr_to_dmem_tmp[1:0])
 						2'b00: begin
 							store_data_to_dmem = {16'd0, rs2_data[15:0]};
 							store_we_to_dmem = 4'd3;
 						end
 						2'b10: begin
-							store_data_to_dmem = {rs2_data[31:16], 16'd0};
+							store_data_to_dmem = {rs2_data[15:0], 16'd0};
 							store_we_to_dmem = 4'd12;
 						end
 						default: begin
@@ -750,12 +750,11 @@ module DatapathSingleCycle (
 							store_data_to_dmem = 0;
 						end
 					endcase
-				end
 				else if (insn_sw) begin
-					addr_to_dmem = rs1_data + imm_s_sext;
 					store_data_to_dmem = rs2_data;
 					store_we_to_dmem = 4'b1111;
 				end
+			end
 			default: begin
 				illegal_insn = 1'b0;
 				pcNext = pcCurrent + 32'd4;
@@ -824,7 +823,72 @@ module MemorySingleCycle (
 	initial _sv2v_0 = 0;
 endmodule
 `default_nettype none
-module SystemResourceCheck (
+module debouncer (
+	i_clk,
+	i_in,
+	o_debounced,
+	o_debug
+);
+	parameter NIN = 21;
+	parameter LGWAIT = 17;
+	input wire i_clk;
+	input wire [NIN - 1:0] i_in;
+	output reg [NIN - 1:0] o_debounced;
+	output wire [30:0] o_debug;
+	reg different;
+	reg ztimer;
+	reg [NIN - 1:0] r_in;
+	reg [NIN - 1:0] q_in;
+	reg [NIN - 1:0] r_last;
+	reg [LGWAIT - 1:0] timer;
+	initial q_in = 0;
+	initial r_in = 0;
+	initial different = 0;
+	always @(posedge i_clk) q_in <= i_in;
+	always @(posedge i_clk) r_in <= q_in;
+	always @(posedge i_clk) r_last <= r_in;
+	initial ztimer = 1'b1;
+	initial timer = 0;
+	always @(posedge i_clk)
+		if (ztimer && different) begin
+			timer <= {LGWAIT {1'b1}};
+			ztimer <= 1'b0;
+		end
+		else if (!ztimer) begin
+			timer <= timer - 1'b1;
+			ztimer <= timer[LGWAIT - 1:1] == 0;
+		end
+		else begin
+			ztimer <= 1'b1;
+			timer <= 0;
+		end
+	always @(posedge i_clk) different <= (different && !ztimer) || (r_in != o_debounced);
+	initial o_debounced = {NIN {1'b0}};
+	always @(posedge i_clk)
+		if (ztimer)
+			o_debounced <= r_last;
+	reg trigger;
+	initial trigger = 1'b0;
+	always @(posedge i_clk) trigger <= (((!ztimer && !different) && !(|i_in)) && (timer[LGWAIT - 1:2] == 0)) && timer[1];
+	wire [30:0] debug;
+	assign debug[30] = ztimer;
+	assign debug[29] = trigger;
+	assign debug[28] = 1'b0;
+	generate
+		if (NIN >= 14) begin : genblk1
+			assign debug[27:14] = o_debounced[13:0];
+			assign debug[13:0] = r_in[13:0];
+		end
+		else begin : genblk1
+			assign debug[27:14 + NIN] = 0;
+			assign debug[(14 + NIN) - 1:14] = o_debounced;
+			assign debug[13:NIN] = 0;
+			assign debug[NIN - 1:0] = r_in;
+		end
+	endgenerate
+	assign o_debug = debug;
+endmodule
+module SystemDemo (
 	external_clk_25MHz,
 	btn,
 	led
@@ -832,7 +896,17 @@ module SystemResourceCheck (
 	input wire external_clk_25MHz;
 	input wire [6:0] btn;
 	output wire [7:0] led;
+	localparam signed [31:0] MmapButtons = 32'hff001000;
+	localparam signed [31:0] MmapLeds = 32'hff002000;
+	wire rst_button_n;
+	wire [30:0] ignore;
 	wire clk_proc;
+	debouncer #(.NIN(1)) db(
+		.i_clk(clk_proc),
+		.i_in(btn[0]),
+		.o_debounced(rst_button_n),
+		.o_debug(ignore)
+	);
 	wire clk_mem;
 	wire clk_locked;
 	MyClockGen clock_gen(
@@ -841,31 +915,40 @@ module SystemResourceCheck (
 		.clk_mem(clk_mem),
 		.locked(clk_locked)
 	);
+	wire rst = !rst_button_n || !clk_locked;
 	wire [31:0] pc_to_imem;
 	wire [31:0] insn_from_imem;
 	wire [31:0] mem_data_addr;
 	wire [31:0] mem_data_loaded_value;
 	wire [31:0] mem_data_to_write;
 	wire [3:0] mem_data_we;
-	MemorySingleCycle #(.NUM_WORDS(128)) memory(
-		.rst(!clk_locked),
+	reg [7:0] led_state;
+	assign led = led_state;
+	always @(posedge clk_mem)
+		if (rst)
+			led_state <= 0;
+		else if ((mem_data_addr == MmapLeds) && (mem_data_we[0] == 1))
+			led_state <= mem_data_to_write[7:0];
+	MemorySingleCycle #(.NUM_WORDS(1024)) memory(
+		.rst(rst),
 		.clock_mem(clk_mem),
 		.pc_to_imem(pc_to_imem),
 		.insn_from_imem(insn_from_imem),
 		.addr_to_dmem(mem_data_addr),
 		.load_data_from_dmem(mem_data_loaded_value),
 		.store_data_to_dmem(mem_data_to_write),
-		.store_we_to_dmem(mem_data_we)
+		.store_we_to_dmem((mem_data_addr == MmapLeds ? 4'd0 : mem_data_we))
 	);
+	wire halt;
 	DatapathSingleCycle datapath(
 		.clk(clk_proc),
-		.rst(!clk_locked),
+		.rst(rst),
 		.pc_to_imem(pc_to_imem),
 		.insn_from_imem(insn_from_imem),
 		.addr_to_dmem(mem_data_addr),
 		.store_data_to_dmem(mem_data_to_write),
 		.store_we_to_dmem(mem_data_we),
-		.load_data_from_dmem(mem_data_loaded_value),
-		.halt(led[0])
+		.load_data_from_dmem((mem_data_addr == MmapButtons ? {25'd0, btn} : mem_data_loaded_value)),
+		.halt(halt)
 	);
 endmodule

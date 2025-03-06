@@ -255,8 +255,11 @@ module DatapathSingleCycle (
     sign = 0;
     mul_tmp = 0;
     i_dividend = 0;
-    i_divisor = 32'd1;
+    i_divisor = 32'd0;
     addr_to_dmem_tmp = 0;
+    addr_to_dmem = 0;
+    store_we_to_dmem = 0;
+    store_data_to_dmem = 0;
     case (insn_opcode)
     
       OpLui: begin
@@ -346,6 +349,7 @@ module DatapathSingleCycle (
         end
         else if (insn_mulhsu) begin
           mul_tmp = $signed({{32{rs1_data[31]}}, rs1_data}) * $unsigned(rs2_data);
+          // mul_tmp = $signed(rs1_data) * $unsigned(rs2_data);
           rd_data = mul_tmp[63:32];
         end
         else if (insn_mulhu) begin
