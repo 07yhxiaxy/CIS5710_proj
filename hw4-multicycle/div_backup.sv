@@ -1,9 +1,3 @@
-/* Mark Xia 46332974 */
-// /* verilator lint_off UNOPTFLAT */
-`timescale 1ns / 1ns
-
-// quotient = dividend / divisor
-// Handles both signed and unsigned division
 module DividerUnsignedPipelined (
     input wire clk, rst, stall,
     input  wire sign,  // custom signal - 0 means unsigned, 1 means signed;

@@ -10,7 +10,6 @@ from cocotb_utils import assertEquals
 random.seed(12345) # for determinism
 
 DIVIDER_STAGES = 8
-
 async def preTestSetup(dut):
     """Setup the DUT. MUST be called at the start of EACH test."""
     # Create a 2ns period clock on port clk
