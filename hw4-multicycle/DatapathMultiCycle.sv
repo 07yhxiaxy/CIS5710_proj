@@ -23,8 +23,26 @@ module RegFile (
     input logic we,
     input logic rst
 );
-
+  localparam int NumRegs = 32;
+  logic [`REG_SIZE] regs[NumRegs];
   // TODO: copy your HW3B code here
+  always @(posedge clk) begin
+    if (rst) begin
+      for (int i = 0; i < NumRegs; i++) begin
+        regs[i] <= '0;
+      end
+    end else if (we && rd != 0) begin
+      regs[rd] <= rd_data;
+    end
+  end
+
+  // always_ff @(posedge clk) begin
+  //   rs1_data <= regs[rs1];
+  //   rs2_data <= regs[rs2];
+  // end
+
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
 
 endmodule
 
@@ -42,7 +60,7 @@ module DatapathMultiCycle (
 );
 
   // TODO: your code here (largely based on HW3B)
-
+  parameter STAGES = 8;
   // components of the instruction
   wire [6:0] insn_funct7;
   wire [4:0] insn_rs2;
@@ -58,7 +76,7 @@ module DatapathMultiCycle (
   // I - short immediates and loads
   wire [11:0] imm_i;
   assign imm_i = insn_from_imem[31:20];
-  wire [ 4:0] imm_shamt = insn_from_imem[24:20];
+  wire [4:0] imm_shamt = insn_from_imem[24:20];
 
   // S - stores
   wire [11:0] imm_s;
@@ -199,8 +217,11 @@ module DatapathMultiCycle (
   RegFile rf (
     .clk(clk),
     .rst(rst),
+    // .we(we || r1[7].we_ready),
     .we(we),
+    // .rd(r1[7].we_ready ? r1[7].rd_store : insn_rd),
     .rd(insn_rd),
+    // .rd_data(r1[7].we_ready ? (r1[7].div_rem ? o_remainder : o_quotient) : rd_data),
     .rd_data(rd_data),
     .rs1(insn_rs1),
     .rs2(insn_rs2),
@@ -221,7 +242,49 @@ module DatapathMultiCycle (
   // Divider
   logic [31:0] i_dividend, i_divisor, o_remainder, o_quotient;
   logic sign, stall;
-  divider div1(.i_dividend(i_dividend), .i_divisor(i_divisor), .o_remainder(o_remainder), .o_quotient(o_quotient), .sign(sign), .stall(stall));
+  divider div1(.clk(clk), .rst(rst), .i_dividend(i_dividend), .i_divisor(i_divisor), .o_remainder(o_remainder), .o_quotient(o_quotient), .sign(sign), .stall(stall));
+  
+  // // Extra logic for multicycle
+  // typedef struct packed {
+  //   logic we_ready;
+  //   logic sign;
+  //   logic div_rem; // 0 for div (quotient) 1 for remainder;
+  //   logic [4:0] rd_store;
+  // } div_state;
+  // div_state r1 [0:7];
+  // logic sign_in;
+  // // assign r1[0].we_ready = insn_div || insn_divu || insn_rem || insn_remu;
+  // assign r1[0].we_ready = we;
+  // assign r1[0].rd_store = insn_rd;
+  // assign r1[0].div_rem = (insn_divu || insn_div) ? 0 : 1;
+  // always_ff @(posedge clk) begin
+  //   if (rst) begin
+  //     for(int j = 1; j < STAGES; j++)begin
+  //       r1[j].we_ready <= '0;
+  //       r1[j].rd_store <= '0;
+  //     end
+  //   end
+  //   else begin
+  //     for(int j = 1; j < STAGES; j++)begin
+  //       r1[j].rd_store <= r1[j-1].rd_store;
+  //       r1[j].we_ready <= r1[j-1].we_ready;
+  //     end
+  //   end
+  // end
+
+  logic [$clog2(STAGES)-1:0] counter;
+  logic rdy, we_rdy; // set rdy to 1 when division in process
+  // Counter for 8-cycle division
+  always_ff @(posedge clk) begin
+    if (rst)begin
+      counter <= '0;
+    end
+    else if (rdy) begin
+      counter <= counter + 1;
+    end
+  end
+
+  assign we_rdy = &counter;
 
   always_comb begin
     // Default assignment to avoid latches
@@ -245,8 +308,8 @@ module DatapathMultiCycle (
     addr_to_dmem = 0;
     store_we_to_dmem = 0;
     store_data_to_dmem = 0;
+    rdy = 0;
     case (insn_opcode)
-    
       OpLui: begin
         // TODO: start here by implementing lui
         rd_data = {insn_from_imem[31:12], 12'd0};
@@ -343,28 +406,40 @@ module DatapathMultiCycle (
         end
         // Division
         else if (insn_div) begin
+          we = we_rdy;
+          rdy = 1;
           sign = 1;
           i_dividend = rs1_data;
           i_divisor = rs2_data;
           rd_data = o_quotient;
+          pcNext = we_rdy ? pcCurrent + 32'd4 : pcCurrent;
         end
         else if (insn_divu) begin
+          we = we_rdy;
+          rdy = 1;
           sign = 0;
           i_dividend = rs1_data;
           i_divisor = rs2_data;
           rd_data = o_quotient;
+          pcNext = we_rdy ? pcCurrent + 32'd4 : pcCurrent;
         end
         else if (insn_rem) begin
+          we = we_rdy;
+          rdy = 1;
           sign = 1;
           i_dividend = rs1_data;
           i_divisor = rs2_data;
           rd_data = o_remainder;
+          pcNext = we_rdy ? pcCurrent + 32'd4 : pcCurrent;
         end
         else if (insn_remu) begin
+          we = we_rdy;
+          rdy = 1;
           sign = 0;
           i_dividend = rs1_data;
           i_divisor = rs2_data;
           rd_data = o_remainder;
+          pcNext = we_rdy ? pcCurrent + 32'd4 : pcCurrent;
         end
       end
       OpBranch: begin

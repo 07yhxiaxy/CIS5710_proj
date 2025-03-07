@@ -4,26 +4,82 @@
 
 // quotient = dividend / divisor
 // Handles both signed and unsigned division
+module divider(
+    input wire clk, rst, stall,
+    input  wire [31:0] i_dividend,
+    input  wire [31:0] i_divisor,
+    input  wire sign,  // custom signal - 0 means unsigned, 1 means signed;
+    output wire [31:0] o_remainder,
+    output wire [31:0] o_quotient
+);
+    parameter STAGES = 8;
+    parameter SIZE = 32;
+    typedef struct packed {
+        logic sign;
+        logic [SIZE-1:0] dividend_original;
+        logic [SIZE-1:0] divisor_original;
+    } sign_p;
+    
+    sign_p sign_pipeline[STAGES-1:0];
+
+    // Stores the sign signal
+    assign sign_pipeline[0].sign = sign;
+    assign sign_pipeline[0].dividend_original = i_dividend;
+    assign sign_pipeline[0].divisor_original = i_divisor;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            for (int i = 1; i < STAGES; i++) begin
+                sign_pipeline[i] <= '0; // Reset all except sign_p[0]
+            end
+        end
+        else begin
+            for (int k = 1; k < STAGES; k++) begin
+                sign_pipeline[k] <= sign_pipeline[k-1];
+            end
+        end
+    end
+    // Intermediary storage
+    logic [SIZE-1:0] abs_dividend, abs_divisor, o_quotient_u, o_remainder_u, o_divisor;
+    // logic [31:0] o_divisor_original, o_dividend_original;
+    // Assign values
+    assign abs_dividend = sign ? (i_dividend[31] ? (~i_dividend + 1) : i_dividend) : i_dividend;
+    assign abs_divisor = sign ? (i_divisor[31] ? (~i_divisor + 1) : i_divisor) : i_divisor;
+
+    DividerUnsignedPipelined div_up(.clk(clk), .rst(rst), .stall(stall),
+                            .i_dividend(abs_dividend), .i_divisor(abs_divisor),
+                            .o_remainder(o_remainder_u), .o_quotient(o_quotient_u));
+                            // .o_divisor_original(o_divisor_original), .o_dividend_original(o_dividend_original));
+
+    assign o_quotient = ~(|sign_pipeline[STAGES-1].divisor_original) ? 32'hffffffff : sign_pipeline[STAGES-1].sign
+                        ? ((sign_pipeline[STAGES-1].dividend_original[31] ^ sign_pipeline[STAGES-1].divisor_original[31])
+                        ? (~o_quotient_u + 1) : o_quotient_u) : o_quotient_u;
+
+    assign o_remainder = sign_pipeline[STAGES-1].sign ? ((sign_pipeline[STAGES-1].dividend_original[31])
+                        ? (~o_remainder_u + 1) : o_remainder_u) : o_remainder_u;
+
+endmodule
+
 module DividerUnsignedPipelined (
     input wire clk, rst, stall,
-    input  wire sign,  // custom signal - 0 means unsigned, 1 means signed;
     input  wire  [31:0] i_dividend,
     input  wire  [31:0] i_divisor,
     output logic [31:0] o_remainder,
     output logic [31:0] o_quotient
+    // output logic [31:0] o_divisor_original,
+    // output logic [31:0] o_dividend_original
 );
 
     // TODO: your code here
     parameter SIZE = 32;
     parameter STAGES = 8;
     // parameter ITER_PER_STAGE = SIZE / STAGES;
-    logic [31:0] o_dividend_original, o_divisor;
     // Assign outputs
+    // These are ready after 7 cycles
     assign o_remainder = tmp[STAGES].remainder;
     assign o_quotient = tmp[STAGES].quotient;
-    assign o_divisor = pipeline[STAGES-1].divisor_p;
-    assign o_dividend_original = pipeline[STAGES-1].dividend_p_original;
-
+    // assign o_divisor_original = tmp[STAGES].divisor;
+    // assign o_dividend_original = pipeline[STAGES-1].dividend_p_original;
 
     // Define and instantiate packed pipeline registers
     typedef struct packed {
@@ -31,14 +87,22 @@ module DividerUnsignedPipelined (
         logic [31:0] remainder_p;
         logic [31:0] quotient_p;
         logic [31:0] divisor_p;
-        logic [31:0] dividend_p_original;
+        // logic [31:0] dividend_p_original;
     } p_stages;
 
     p_stages pipeline[0:STAGES - 1];
 
+    // assign pipeline[0].dividend_p_original = i_dividend;
+
     always_ff @(posedge clk) begin
         if (rst) begin
-            pipeline <= '{default: 0};
+            for (int k = 0; k < STAGES; k++) begin
+                pipeline[k].dividend_p  <= 32'd0;
+                pipeline[k].remainder_p <= 32'd0;
+                pipeline[k].quotient_p  <= 32'd0;
+                pipeline[k].divisor_p   <= 32'd0;
+                // Do NOT reset pipeline[k].dividend_p_original
+            end
         end
         else if (~stall) begin
             for (int k = 1; k < STAGES; k++) begin
@@ -46,12 +110,10 @@ module DividerUnsignedPipelined (
                 pipeline[k].remainder_p <= tmp[k].remainder;
                 pipeline[k].quotient_p <= tmp[k].quotient;
                 pipeline[k].divisor_p <= tmp[k].divisor;
-                pipeline[k].dividend_p_original <= pipeline[k-1].dividend_p_original;
+                // pipeline[k].dividend_p_original <= pipeline[k-1].dividend_p_original;
             end
         end
     end
-
-    assign pipeline[0].dividend_p_original = i_dividend;
 
     // Define generate variables and instantiate 8 times of 4 iteration modules
     genvar i;

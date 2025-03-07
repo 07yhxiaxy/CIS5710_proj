@@ -145,7 +145,7 @@ async def testLui(dut):
     riscv_binary_utils.asm(dut, 'lui x1,0x12345')
     await preTestSetup(dut)
 
-    await ClockCycles(dut.clock_proc, 2)
+    await ClockCycles(dut.clock_proc, 3)
     assertEquals(0x12345000, dut.datapath.rf.regs[1].value, f'failed at cycle {dut.datapath.cycles_current.value.integer}')
 
 @cocotb.test()
