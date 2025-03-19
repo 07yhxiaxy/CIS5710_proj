@@ -57,19 +57,27 @@ module RegFile (
     input logic rst
 );
   localparam int NumRegs = 32;
-  genvar i;
+  // genvar i;
   logic [`REG_SIZE] regs[NumRegs];
 
-  // TODO: your code here
+  // TODO: copy your HW3B code here
+  always @(posedge clk) begin
+    if (rst) begin
+      for (int i = 0; i < NumRegs; i++) begin
+        regs[i] <= '0;
+      end
+    end else if (we && rd != 0) begin
+      regs[rd] <= rd_data;
+    end
+  end
+
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
+
+  // assign rs1_data = (rs1 == 0) ? '0 : regs[rs1]; // x0 is hardwired to 0
+  // assign rs2_data = (rs2 == 0) ? '0 : regs[rs2]; // x0 is hardwired to 0
 
 endmodule
-
-/** state at the start of Decode stage */
-typedef struct packed {
-  logic [`REG_SIZE] pc;
-  logic [`INSN_SIZE] insn;
-  cycle_status_e cycle_status;
-} stage_decode_t;
 
 module DatapathPipelined (
     input wire clk,
@@ -91,21 +99,6 @@ module DatapathPipelined (
     // The status of the insn (or stall) currently in Writeback. See the cycle_status.sv file for valid values.
     output cycle_status_e trace_writeback_cycle_status
 );
-
-  // opcodes - see section 19 of RiscV spec
-  localparam bit [`OPCODE_SIZE] OpcodeLoad = 7'b00_000_11;
-  localparam bit [`OPCODE_SIZE] OpcodeStore = 7'b01_000_11;
-  localparam bit [`OPCODE_SIZE] OpcodeBranch = 7'b11_000_11;
-  localparam bit [`OPCODE_SIZE] OpcodeJalr = 7'b11_001_11;
-  localparam bit [`OPCODE_SIZE] OpcodeMiscMem = 7'b00_011_11;
-  localparam bit [`OPCODE_SIZE] OpcodeJal = 7'b11_011_11;
-
-  localparam bit [`OPCODE_SIZE] OpcodeRegImm = 7'b00_100_11;
-  localparam bit [`OPCODE_SIZE] OpcodeRegReg = 7'b01_100_11;
-  localparam bit [`OPCODE_SIZE] OpcodeEnviron = 7'b11_100_11;
-
-  localparam bit [`OPCODE_SIZE] OpcodeAuipc = 7'b00_101_11;
-  localparam bit [`OPCODE_SIZE] OpcodeLui = 7'b01_101_11;
 
   // cycle counter, not really part of any stage but useful for orienting within GtkWave
   // do not rename this as the testbench uses this value
@@ -154,6 +147,34 @@ module DatapathPipelined (
   /****************/
   /* DECODE STAGE */
   /****************/
+  /** state at the start of Decode stage */
+  typedef struct packed {
+    logic [`REG_SIZE] pc;
+    logic [`INSN_SIZE] insn;
+    cycle_status_e cycle_status;
+  } stage_decode_t;
+  parameter STAGES = 8;
+  // components of the instruction
+  wire [6:0] insn_funct7;
+  wire [4:0] insn_rs2;
+  wire [4:0] insn_rs1;
+  wire [2:0] insn_funct3;
+  wire [4:0] insn_rd;
+  wire [`OPCODE_SIZE] insn_opcode;
+  // opcodes - see section 19 of RiscV spec
+  localparam bit [`OPCODE_SIZE] OpcodeLoad = 7'b00_000_11;
+  localparam bit [`OPCODE_SIZE] OpcodeStore = 7'b01_000_11;
+  localparam bit [`OPCODE_SIZE] OpcodeBranch = 7'b11_000_11;
+  localparam bit [`OPCODE_SIZE] OpcodeJalr = 7'b11_001_11;
+  localparam bit [`OPCODE_SIZE] OpcodeMiscMem = 7'b00_011_11;
+  localparam bit [`OPCODE_SIZE] OpcodeJal = 7'b11_011_11;
+
+  localparam bit [`OPCODE_SIZE] OpcodeRegImm = 7'b00_100_11;
+  localparam bit [`OPCODE_SIZE] OpcodeRegReg = 7'b01_100_11;
+  localparam bit [`OPCODE_SIZE] OpcodeEnviron = 7'b11_100_11;
+
+  localparam bit [`OPCODE_SIZE] OpcodeAuipc = 7'b00_101_11;
+  localparam bit [`OPCODE_SIZE] OpcodeLui = 7'b01_101_11;
 
   // this shows how to package up state in a `struct packed`, and how to pass it between stages
   stage_decode_t decode_state;
@@ -184,6 +205,11 @@ module DatapathPipelined (
 
   // TODO: your code here, though you will also need to modify some of the code above
   // TODO: the testbench requires that your register file instance is named `rf`
+  typedef struct packed {
+    
+  } stage_execute_t;
+
+
 
 endmodule
 
