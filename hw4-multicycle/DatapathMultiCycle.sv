@@ -36,11 +36,6 @@ module RegFile (
     end
   end
 
-  // always_ff @(posedge clk) begin
-  //   rs1_data <= regs[rs1];
-  //   rs2_data <= regs[rs2];
-  // end
-
   assign rs1_data = regs[rs1];
   assign rs2_data = regs[rs2];
 
