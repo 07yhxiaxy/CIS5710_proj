@@ -1,0 +1,37 @@
+  // Assign Alu_op operations
+  always_comb begin
+    // Default ALU operation
+    decode_state.alu_op = ALU_NOP;
+    // Map instructions to ALU operations
+    if (insn_add || insn_addi) begin
+      decode_state.alu_op = ALU_ADD;
+    end else if (insn_sub) begin
+      decode_state.alu_op = ALU_SUB;
+    end else if (insn_sll || insn_slli) begin
+      decode_state.alu_op = ALU_SLL;
+    end else if (insn_slt || insn_slti) begin
+      decode_state.alu_op = ALU_SLT;
+    end else if (insn_sltu || insn_sltiu) begin
+      decode_state.alu_op = ALU_SLTU;
+    end else if (insn_xor || insn_xori) begin
+      decode_state.alu_op = ALU_XOR;
+    end else if (insn_srl || insn_srli) begin
+      decode_state.alu_op = ALU_SRL;
+    end else if (insn_sra || insn_srai) begin
+      decode_state.alu_op = ALU_SRA;
+    end else if (insn_or || insn_ori) begin
+      decode_state.alu_op = ALU_OR;
+    end else if (insn_and || insn_andi) begin
+      decode_state.alu_op = ALU_AND;
+    end else if (insn_mul) begin
+      decode_state.alu_op = ALU_MUL;
+    end else if (insn_div) begin
+      decode_state.alu_op = ALU_DIV;
+    end else if (insn_divu) begin
+      decode_state.alu_op = ALU_DIVU;
+    end else if (insn_rem) begin
+      decode_state.alu_op = ALU_REM;
+    end else if (insn_remu) begin
+      decode_state.alu_op = ALU_REMU;
+    end
+  end

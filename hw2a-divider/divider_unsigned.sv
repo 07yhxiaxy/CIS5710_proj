@@ -12,8 +12,6 @@ module divider(
 );
     // Intermediary storage
     logic [31:0] abs_dividend, abs_divisor, o_quotient_u, o_remainder_u;
-    // logic [31:0] unsigned_remainder, unsigned_quotient;
-    // logic sign_dividend, sign_divisor, sign_quotient, sign_remainder;
     // Assign values
     assign abs_dividend = sign ? (i_dividend[31] ? (~i_dividend + 1) : i_dividend) : i_dividend;
     assign abs_divisor = sign ? (i_divisor[31] ? (~i_divisor + 1) : i_divisor) : i_divisor;
